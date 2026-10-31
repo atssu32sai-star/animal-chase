@@ -1,0 +1,519 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>アニマルチェイス</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Dela+Gothic+One&family=M+PLUS+1p:wght@400;700&display=swap">
+<style>
+/* 1画面のゲーム。上に一番近い群れ、中央に3本の道、下にスピードと操作 */
+:root{
+  --bg:#13201a;        /* 夜のサバンナ */
+  --panel:#1c2d24;
+  --fg:#eef3e8;
+  --muted:#9bb0a0;
+  --safe:#7fd36b;
+  --warn:#f2c14e;
+  --danger:#ff5a4f;
+  --track:#2a4134;
+  --display:"Dela Gothic One","Hiragino Sans","Noto Sans JP",sans-serif;
+  --body:"M PLUS 1p","Hiragino Sans","Noto Sans JP",sans-serif;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0}
+body{background:var(--bg);color:var(--fg);font-family:var(--body);font-size:16px;
+  padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));
+  -webkit-tap-highlight-color:transparent}
+.wrap{max-width:480px;margin:0 auto;padding-block:16px;display:flex;flex-direction:column;gap:16px;min-height:100%}
+section{flex-direction:column;gap:16px}
+h1{font-family:var(--display);font-weight:400;font-size:28px;margin:0;letter-spacing:.02em}
+.sub{color:var(--muted);margin:0;font-size:14px}
+.card{background:var(--panel);border-radius:14px;padding:16px;display:flex;flex-direction:column;gap:12px}
+.label{font-size:12px;color:var(--muted);letter-spacing:.08em}
+.packlist{display:flex;flex-direction:column;gap:8px}
+.packinfo{display:grid;grid-template-columns:44px 1fr auto;gap:10px;align-items:center}
+.packinfo .em{font-size:32px;line-height:1;text-align:center}
+.packinfo .nm{font-weight:700}
+.packinfo .ds{font-size:12px;color:var(--muted)}
+.packinfo .sp{font-size:13px;color:var(--muted);font-variant-numeric:tabular-nums;text-align:right}
+.row{display:flex;gap:8px;flex-wrap:wrap}
+.chip{background:var(--track);border:2px solid transparent;color:var(--fg);border-radius:999px;padding:8px 14px;
+  font-family:var(--body);font-size:15px;cursor:pointer}
+.chip[aria-pressed="true"]{border-color:var(--safe)}
+.btn{font-family:var(--display);font-size:22px;border:0;border-radius:14px;padding:18px;cursor:pointer;
+  background:var(--safe);color:#10200f}
+.btn.ghost{background:var(--track);color:var(--fg);font-family:var(--body);font-size:16px;padding:14px}
+button:focus-visible{outline:3px solid var(--warn);outline-offset:2px}
+.hint{font-size:13px;color:var(--muted);line-height:1.6;margin:0}
+label.chk{display:flex;gap:8px;align-items:center;font-size:14px}
+
+/* ゲーム画面 */
+.near{text-align:center}
+.near .who{font-size:15px;font-weight:700}
+.gapnum{font-family:var(--display);font-size:56px;line-height:1.05;font-variant-numeric:tabular-nums}
+.gapnum small{font-size:22px;margin-left:4px}
+.status{text-align:center;font-weight:700;font-size:17px;min-height:1.4em}
+.lanes{display:flex;flex-direction:column;gap:10px}
+.lane{background:var(--panel);border-radius:12px;padding:10px 12px;display:flex;flex-direction:column;gap:6px}
+.lane .top{display:flex;justify-content:space-between;align-items:baseline;gap:8px}
+.lane .nm{font-weight:700;font-size:14px}
+.lane .rd{font-size:12px;color:var(--muted);margin-left:4px;font-weight:400}
+.lane .d{font-family:var(--display);font-size:20px;font-variant-numeric:tabular-nums}
+.lane .bar{position:relative;height:30px;background:var(--track);border-radius:8px;overflow:hidden}
+.lane .pk{position:absolute;top:50%;transform:translate(-50%,-50%);font-size:20px;white-space:nowrap;transition:left .25s linear;letter-spacing:-6px}
+.lane .me{position:absolute;right:6px;top:50%;transform:translateY(-50%);font-size:20px}
+.lane.warn .d{color:var(--warn)}
+.lane.danger .d{color:var(--danger)}
+.lane.danger .bar{animation:pulse .6s infinite alternate}
+@keyframes pulse{to{background:#5a2420}}
+.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;text-align:center}
+.stats .v{font-family:var(--display);font-size:20px;font-variant-numeric:tabular-nums}
+.stats .k{font-size:11px;color:var(--muted);letter-spacing:.04em}
+.src{font-size:12px;color:var(--muted);text-align:center}
+body.l1 .gapnum,body.l1 .status{color:var(--warn)}
+body.l2 .gapnum,body.l2 .status,body.l3 .gapnum,body.l3 .status{color:var(--danger)}
+@media (prefers-reduced-motion:reduce){.lane.danger .bar{animation:none;background:#5a2420}.lane .pk{transition:none}}
+.sim{display:flex;flex-direction:column;gap:6px}
+input[type=range]{width:100%}
+.result .big{font-family:var(--display);font-size:34px;text-align:center;margin:0;text-wrap:balance}
+.result .stats{grid-template-columns:repeat(3,1fr)}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <!-- スタート画面 -->
+  <section id="setup" style="display:flex">
+    <div>
+      <h1>アニマルチェイス</h1>
+      <p class="sub">3つの群れが、別々の道から追ってくる。実際に走って逃げ切ろう。</p>
+    </div>
+
+    <div class="card">
+      <div class="label">追ってくる群れ</div>
+      <div class="packlist" id="packlist"></div>
+      <p class="hint">どれか1つの群れに追いつかれたら終わりです。自分の速さが群れより速ければ差が広がり、遅いと縮まります。</p>
+    </div>
+
+    <div class="card">
+      <div class="label">逃げ切る時間</div>
+      <div class="row" id="times"></div>
+      <label class="chk"><input type="checkbox" id="simMode"> テストモード（走らずにスライダーで速さを変える）</label>
+    </div>
+
+    <button class="btn" id="startBtn">スタート</button>
+    <p class="hint">イヤホン推奨です（群れの方向で左右から聞こえます）。位置情報と動作センサーの許可を求められたら「許可」を選んでください。画面は消さずに走ってください。周りの安全を優先してください。</p>
+  </section>
+
+  <!-- ゲーム画面 -->
+  <section id="game" hidden style="display:none">
+    <div class="near">
+      <div class="who" id="nearWho">準備中</div>
+      <div class="gapnum" id="gapNum">300<small>m</small></div>
+    </div>
+    <div class="status" id="status">準備中…</div>
+
+    <div class="lanes" id="lanes"></div>
+
+    <div class="card">
+      <div class="stats">
+        <div><div class="v" id="speedNum">0.0</div><div class="k">速さ km/h</div></div>
+        <div><div class="v" id="pace">--:--</div><div class="k">ペース /km</div></div>
+        <div><div class="v" id="dist">0.00</div><div class="k">距離 km</div></div>
+        <div><div class="v" id="tLeft">10:00</div><div class="k">残り時間</div></div>
+      </div>
+      <div class="src" id="srcLabel">センサー待ち</div>
+    </div>
+
+    <div class="card sim" id="simBox" hidden>
+      <div class="label">テスト用スピード <span id="simVal">0</span> km/h</div>
+      <input type="range" id="simRange" min="0" max="12" step="0.5" value="0">
+    </div>
+
+    <button class="btn ghost" id="stopBtn">やめる</button>
+  </section>
+
+  <!-- 結果画面 -->
+  <section id="result" hidden class="result" style="display:none">
+    <p class="big" id="resTitle"></p>
+    <div class="card">
+      <div class="stats">
+        <div><div class="v" id="rTime">0:00</div><div class="k">逃げた時間</div></div>
+        <div><div class="v" id="rDist">0.00</div><div class="k">距離 km</div></div>
+        <div><div class="v" id="rPace">--:--</div><div class="k">平均ペース</div></div>
+      </div>
+    </div>
+    <button class="btn" id="againBtn">もう一度</button>
+  </section>
+
+</div>
+
+<script>
+// ================= 設定（数字はここで変えられます） =================
+const PACKS = [
+  // pan: 左右の聞こえ方 (-1=左, 0=正面, 1=右)
+  { id:"hippo", name:"カバ",       em:"🦛", kmh:5, start:300, count:4,  road:"北の道", pan: 0   },
+  { id:"chimp", name:"チンパンジー", em:"🐒", kmh:6, start:400, count:6,  road:"西の道", pan:-0.8 },
+  { id:"dog",   name:"犬",         em:"🐕", kmh:7, start:500, count:10, road:"東の道", pan: 0.8 },
+];
+const TIMES = [5,10,20];   // 分
+const MAX_GAP = 900;       // これ以上は離れない (m)
+const BAR_SCALE = 600;     // 画面の道の長さ (m)
+const HEAR = 350;          // 鳴き声が聞こえ始める距離 (m)
+const STRIDE_M = 1.0;      // 歩数→速さの換算に使う1歩の長さ (m)
+// 緊張度: 0=平常 1=接近 2=危険 3=すぐ後ろ （一番近い群れとの距離で決まる）
+const LEVEL_AT = [200, 100, 50];
+const TALK_EVERY = [45, 30, 15, 8]; // 実況の間隔 (秒)
+
+let minutes = 10;
+const $ = id => document.getElementById(id);
+const pace = kmh => { if (kmh < 0.5) return "--:--"; const s = 3600/kmh; return Math.floor(s/60)+":"+String(Math.round(s%60)).padStart(2,"0"); };
+const fmt = s => { s = Math.round(s); return Math.floor(s/60)+":"+String(s%60).padStart(2,"0"); };
+const rnd = (a,b) => a + Math.random()*(b-a);
+
+// ================= スタート画面 =================
+function renderSetup(){
+  $("packlist").innerHTML = PACKS.map(p => `
+    <div class="packinfo"><div class="em">${p.em}</div>
+      <div><div class="nm">${p.name} ${p.count}頭</div><div class="ds">${p.road}から・${p.start}m後ろ</div></div>
+      <div class="sp">時速${p.kmh}km<br>${pace(p.kmh)}/km</div></div>`).join("");
+  $("times").innerHTML = TIMES.map(t => `<button class="chip" data-t="${t}" aria-pressed="${t===minutes}">${t}分</button>`).join("");
+}
+$("times").onclick = e => { const b = e.target.closest(".chip"); if (b) { minutes = +b.dataset.t; renderSetup(); } };
+renderSetup();
+
+// ================= センサー =================
+let gps = { kmh:0, t:0, acc:999, last:null }, watchId = null;
+function haversine(a,b){
+  const R=6371000, r=x=>x*Math.PI/180;
+  const dLat=r(b.latitude-a.latitude), dLon=r(b.longitude-a.longitude);
+  const h=Math.sin(dLat/2)**2+Math.cos(r(a.latitude))*Math.cos(r(b.latitude))*Math.sin(dLon/2)**2;
+  return 2*R*Math.asin(Math.sqrt(h));
+}
+function onPos(p){
+  const c = p.coords, now = p.timestamp;
+  gps.acc = c.accuracy;
+  let v = null;
+  if (c.speed != null && !isNaN(c.speed) && c.speed >= 0) v = c.speed*3.6;
+  else if (gps.last && c.accuracy <= 30) {
+    const dt = (now - gps.last.t)/1000;
+    if (dt >= 1) v = haversine(gps.last.c, c)/dt*3.6;
+  }
+  if (c.accuracy <= 30) gps.last = { c, t:now };
+  if (v != null && v < 40) { gps.kmh = gps.t ? gps.kmh*0.6 + v*0.4 : v; gps.t = Date.now(); }
+}
+function startGPS(){
+  if (!("geolocation" in navigator)) return;
+  watchId = navigator.geolocation.watchPosition(onPos, err => { $("srcLabel").textContent = "GPSが使えません: " + err.message; },
+    { enableHighAccuracy:true, maximumAge:0, timeout:10000 });
+}
+let steps = [], lp = 9.8, lastStep = 0, above = false;
+function onMotion(e){
+  const a = e.accelerationIncludingGravity; if (!a || a.x == null) return;
+  const m = Math.hypot(a.x, a.y, a.z);
+  lp = lp*0.9 + m*0.1;
+  const now = Date.now();
+  if (!above && m > lp + 2.5 && now - lastStep > 250) { above = true; lastStep = now; steps.push(now); }
+  if (above && m < lp) above = false;
+}
+function stepKmh(){
+  const now = Date.now();
+  steps = steps.filter(t => now - t < 4000);
+  return steps.length < 3 ? 0 : steps.length/4 * STRIDE_M * 3.6;
+}
+async function startMotion(){
+  try {
+    if (typeof DeviceMotionEvent !== "undefined" && typeof DeviceMotionEvent.requestPermission === "function") {
+      if (await DeviceMotionEvent.requestPermission() !== "granted") return;
+    }
+    window.addEventListener("devicemotion", onMotion);
+  } catch(_) {}
+}
+function currentSpeed(){
+  if ($("simMode").checked) return { kmh:+$("simRange").value, src:"テストモード" };
+  if (Date.now() - gps.t < 4000 && gps.acc <= 25) return { kmh:gps.kmh, src:`GPS（誤差 約${Math.round(gps.acc)}m）` };
+  const s = stepKmh();
+  if (s > 0) return { kmh:s, src:"歩数から推定（GPS待ち）" };
+  return { kmh: gps.t ? gps.kmh : 0, src: gps.t ? "GPS（電波が弱い）" : "センサー待ち" };
+}
+
+// ================= 音の土台 =================
+let ac = null, master, bgmGain, sfxGain, noiseBuf;
+function initAudio(){
+  ac = new (window.AudioContext || window.webkitAudioContext)();
+  master = ac.createGain(); master.gain.value = 0.9; master.connect(ac.destination);
+  bgmGain = ac.createGain(); bgmGain.gain.value = 0.5; bgmGain.connect(master);
+  sfxGain = ac.createGain(); sfxGain.gain.value = 1; sfxGain.connect(master);
+  noiseBuf = ac.createBuffer(1, ac.sampleRate*2, ac.sampleRate);
+  const d = noiseBuf.getChannelData(0); for (let i=0;i<d.length;i++) d[i] = Math.random()*2-1;
+}
+function env(g, t, peak, a, dur){ // 音量の山: 立ち上がりa秒、全体dur秒
+  g.gain.setValueAtTime(0.0001, t);
+  g.gain.exponentialRampToValueAtTime(Math.max(peak,0.0002), t + a);
+  g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+}
+function noise(t, dur){ const s = ac.createBufferSource(); s.buffer = noiseBuf; s.start(t, Math.random()); s.stop(t + dur + 0.05); return s; }
+function osc(type, f, t, dur){ const o = ac.createOscillator(); o.type = type; o.frequency.setValueAtTime(f, t); o.start(t); o.stop(t + dur + 0.05); return o; }
+function filt(type, f, q=1){ const b = ac.createBiquadFilter(); b.type = type; b.frequency.value = f; b.Q.value = q; return b; }
+function out(pan){ // 群れの方向に応じて左右に振る
+  if (ac.createStereoPanner) { const p = ac.createStereoPanner(); p.pan.value = pan; p.connect(sfxGain); return p; }
+  return sfxGain;
+}
+
+// ================= BGM（緊張度で曲が変わる） =================
+const BGM = [
+  { bpm: 96,  kick:[0,8],        snare:[],     hat:[4,12],              bass:[0,null,null,null,3,null,null,null,0,null,null,null,5,null,3,null], bassType:"triangle", lead:null },
+  { bpm:112,  kick:[0,8],        snare:[4,12], hat:[2,6,10,14],         bass:[0,null,0,null,3,null,0,null,5,null,0,null,3,null,7,null], bassType:"triangle", lead:null },
+  { bpm:132,  kick:[0,4,8,12],   snare:[4,12], hat:[0,2,4,6,8,10,12,14], bass:[0,0,12,0,3,3,15,3,5,5,17,5,3,3,15,3], bassType:"sawtooth", lead:[24,null,27,null,31,null,27,null] },
+  { bpm:156,  kick:[0,4,8,10,12],snare:[4,12,14], hat:[...Array(16).keys()], bass:[0,0,0,0,1,1,1,1,0,0,0,0,6,6,6,6], bassType:"sawtooth", lead:[24,30] },
+];
+let bgmLevel = 0, step = 0, nextStepT = 0, bgmTimer = null;
+const A1 = 55;
+const nf = semi => A1 * Math.pow(2, semi/12);
+function kick(t,v){ const o = osc("sine",150,t,0.2), g = ac.createGain(); o.frequency.exponentialRampToValueAtTime(40,t+0.15); env(g,t,v,0.005,0.2); o.connect(g).connect(bgmGain); }
+function snare(t,v){ const n = noise(t,0.15), f = filt("highpass",1500), g = ac.createGain(); env(g,t,v,0.003,0.15); n.connect(f).connect(g).connect(bgmGain); }
+function hat(t,v){ const n = noise(t,0.05), f = filt("highpass",7000), g = ac.createGain(); env(g,t,v,0.002,0.04); n.connect(f).connect(g).connect(bgmGain); }
+function bassNote(t,semi,dur,type){ const o = osc(type,nf(semi),t,dur), f = filt("lowpass",type==="sawtooth"?900:500), g = ac.createGain(); env(g,t,0.35,0.01,dur); o.connect(f).connect(g).connect(bgmGain); }
+function leadNote(t,semi,dur){ const o = osc("square",nf(semi),t,dur), f = filt("lowpass",2500), g = ac.createGain(); env(g,t,0.09,0.01,dur); o.connect(f).connect(g).connect(bgmGain); }
+function schedule(){
+  while (nextStepT < ac.currentTime + 0.12) {
+    const p = BGM[bgmLevel], s16 = 60/p.bpm/4, t = nextStepT, i = step % 16;
+    if (p.kick.includes(i)) kick(t, 0.8);
+    if (p.snare.includes(i)) snare(t, 0.35);
+    if (p.hat.includes(i)) hat(t, 0.12);
+    if (p.bass[i] != null) bassNote(t, p.bass[i], s16*1.8, p.bassType);
+    if (p.lead) { const L = p.lead, len = 16/L.length; if (i % len === 0) { const n = L[(i/len)|0]; if (n != null) leadNote(t, n, s16*len*0.9); } }
+    nextStepT += s16; step++;
+  }
+}
+function startBGM(){ nextStepT = ac.currentTime + 0.1; step = 0; bgmTimer = setInterval(schedule, 25); }
+function stopBGM(){ clearInterval(bgmTimer); bgmTimer = null; }
+
+// ================= 鳴き声（距離で大きさと鳴き方が変わる） =================
+// stage: 0=遠い 1=中くらい 2=近い 3=すぐ後ろ
+const CALLS = {
+  dog: (t,v,pan,stage,pitch) => {
+    const o = out(pan);
+    if (stage === 0) { // 遠吠え
+      const s = osc("sine",450*pitch,t,1.4), g = ac.createGain(), vib = osc("sine",6,t,1.4), vg = ac.createGain();
+      s.frequency.linearRampToValueAtTime(750*pitch,t+0.5); s.frequency.linearRampToValueAtTime(600*pitch,t+1.3);
+      vg.gain.value = 12; vib.connect(vg).connect(s.frequency); env(g,t,v*0.5,0.3,1.4); s.connect(g).connect(o); return;
+    }
+    const barks = stage === 1 ? 2 : 3;
+    for (let k=0;k<barks;k++){ // ワン（ノイズ＋声）
+      const tt = t + k*rnd(0.18,0.28), s = osc("sawtooth",420*pitch,tt,0.14), n = noise(tt,0.12);
+      s.frequency.exponentialRampToValueAtTime(220*pitch,tt+0.12);
+      const f = filt("bandpass",1100*pitch,1.5), g = ac.createGain(); env(g,tt,v,0.008,0.14);
+      s.connect(f); n.connect(f); f.connect(g).connect(o);
+    }
+    if (stage >= 2) { // ウゥ〜（唸り）
+      const dur = stage === 3 ? 1.6 : 1.0, s = osc("sawtooth",85*pitch,t+0.6,dur), lfo = osc("sine",22,t+0.6,dur), lg = ac.createGain(), am = ac.createGain();
+      lg.gain.value = 0.5; am.gain.value = 0.5; lfo.connect(lg).connect(am.gain);
+      const f = filt("lowpass",stage===3?900:600), g = ac.createGain(); env(g,t+0.6,v*0.9,0.15,dur);
+      s.connect(am).connect(f).connect(g).connect(o);
+    }
+  },
+  chimp: (t,v,pan,stage,pitch) => {
+    const o = out(pan);
+    const hoots = stage === 0 ? 2 : stage === 1 ? 4 : 6, gapT = stage >= 2 ? 0.13 : 0.22;
+    for (let k=0;k<hoots;k++){ // ホッ ホッ（だんだん速く高く）
+      const tt = t + k*gapT*(1 - k*0.06), f0 = (300 + k*40)*pitch, s = osc("sine",f0,tt,0.2), g = ac.createGain();
+      s.frequency.linearRampToValueAtTime(f0*1.5,tt+0.15); env(g,tt,v*0.8,0.02,0.2); s.connect(g).connect(o);
+    }
+    if (stage >= 2) { // キャーッ（叫び）
+      const tt = t + hoots*gapT*0.8, dur = stage === 3 ? 0.7 : 0.45, s = osc("sawtooth",1100*pitch,tt,dur), n = noise(tt,dur);
+      s.frequency.linearRampToValueAtTime(1600*pitch,tt+dur*0.4); s.frequency.linearRampToValueAtTime(1200*pitch,tt+dur);
+      const f = filt("bandpass",1500*pitch,2), g = ac.createGain(); env(g,tt,v,0.02,dur); s.connect(f); n.connect(f); f.connect(g).connect(o);
+    }
+  },
+  hippo: (t,v,pan,stage,pitch) => {
+    const o = out(pan);
+    const grunts = stage === 0 ? 1 : stage === 1 ? 2 : 4;
+    for (let k=0;k<grunts;k++){ // ブフォ（低いうなり）
+      const tt = t + k*rnd(0.35,0.5), dur = 0.5, s = osc("sawtooth",70*pitch,tt,dur), lfo = osc("sine",14,tt,dur), lg = ac.createGain(), am = ac.createGain();
+      s.frequency.linearRampToValueAtTime(55*pitch,tt+dur); lg.gain.value = 0.6; am.gain.value = 0.4; lfo.connect(lg).connect(am.gain);
+      const f = filt("lowpass",350), g = ac.createGain(); env(g,tt,v*1.1,0.05,dur); s.connect(am).connect(f).connect(g).connect(o);
+    }
+    if (stage >= 2) { // ホンッホンッ（大きな鳴き声）
+      for (let k=0;k<(stage===3?4:2);k++){
+        const tt = t + grunts*0.4 + k*0.28, s = osc("square",130*pitch,tt,0.22), n = noise(tt,0.2);
+        s.frequency.exponentialRampToValueAtTime(90*pitch,tt+0.2);
+        const f = filt("bandpass",450,1), g = ac.createGain(); env(g,tt,v*0.8,0.01,0.22); s.connect(f); n.connect(f); f.connect(g).connect(o);
+      }
+    }
+  },
+};
+function stageOf(d){ return d < 30 ? 3 : d < 80 ? 2 : d < 200 ? 1 : 0; }
+function playPack(p){
+  const d = p.gap, stage = stageOf(d);
+  const v = 0.05 + 0.75 * Math.pow(1 - d/HEAR, 2);           // 近いほど大きく
+  const voices = Math.min(p.count, [1,2,3,4][stage]);          // 近いほど群れの声が重なる
+  for (let k=0;k<voices;k++) CALLS[p.id](ac.currentTime + 0.05 + k*rnd(0.08,0.35), v*(k?0.7:1), p.pan, stage, rnd(0.9,1.12));
+  const wait = [[6,9],[3,5],[1.4,2.2],[0.7,1.1]][stage];
+  p.nextCall = Date.now() + rnd(wait[0], wait[1])*1000;
+}
+
+// ================= 実況（読み上げ） =================
+let jaVoice = null;
+function pickVoice(){ const vs = speechSynthesis.getVoices(); jaVoice = vs.find(v => v.lang && v.lang.startsWith("ja")) || null; }
+if ("speechSynthesis" in window) { pickVoice(); speechSynthesis.onvoiceschanged = pickVoice; }
+let lastTalk = 0, nextTalkAt = 0;
+function say(text, urgent){
+  if (!("speechSynthesis" in window)) return;
+  if (urgent) speechSynthesis.cancel();
+  const u = new SpeechSynthesisUtterance(text);
+  u.lang = "ja-JP"; if (jaVoice) u.voice = jaVoice;
+  u.rate = urgent ? 1.25 : 1.05; u.pitch = urgent ? 1.2 : 1;
+  u.onstart = () => { if (ac) bgmGain.gain.setTargetAtTime(0.18, ac.currentTime, 0.1); };  // しゃべる間はBGMを下げる
+  u.onend = u.onerror = () => { if (ac) bgmGain.gain.setTargetAtTime(0.5, ac.currentTime, 0.3); };
+  speechSynthesis.speak(u);
+  lastTalk = Date.now();
+}
+const m10 = d => Math.max(0, Math.round(d/10)*10);
+function commentary(level, nearest, sp){
+  const sorted = [...packs].sort((a,b) => a.gap - b.gap);
+  const n = nearest, trend = n.gap - n.lastSaid; n.lastSaid = n.gap;
+  if (level === 0) {
+    const list = sorted.map(p => `${p.name}の群れまで${m10(p.gap)}メートル`).join("、");
+    const tail = trend > 3 ? "引き離しています。いいペースです。" : trend < -3 ? `${n.name}が少しずつ近づいています。` : "このペースを保ちましょう。";
+    return list + "。" + tail;
+  }
+  if (level === 1) {
+    const second = sorted[1];
+    return `注意。${n.name}の群れ${n.count}頭が、${n.road}から近づいています。残り${m10(n.gap)}メートル。` +
+      (second.gap < 200 ? `${second.name}も${m10(second.gap)}メートルです。` : "") +
+      (sp < n.kmh ? `時速${n.kmh}キロより速く走ってください。` : "少しずつ離れています。");
+  }
+  if (level === 2) {
+    const lines = [`危ない！${n.name}が${Math.round(n.gap)}メートルまで迫っています！ペースを上げて！`,
+                   `${n.name}の群れ、あと${Math.round(n.gap)}メートル！足音が聞こえてきた！`,
+                   `${n.road}から${n.name}が来る！${Math.round(n.gap)}メートル！急いで！`];
+    return lines[(Math.random()*lines.length)|0];
+  }
+  const lines = [`すぐ後ろだ！${n.name}、あと${Math.round(n.gap)}メートル！走れ！`,
+                 `${n.name}が噛みつきそうだ！${Math.round(n.gap)}メートル！全力で！`,
+                 `振り向くな！${n.name}まで${Math.round(n.gap)}メートル！`];
+  return lines[(Math.random()*lines.length)|0];
+}
+
+// ================= 画面スリープ防止 =================
+let wakeLock = null;
+async function keepAwake(){ try { wakeLock = await navigator.wakeLock.request("screen"); } catch(_) {} }
+document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible" && running) keepAwake(); });
+
+// ================= ゲーム本体 =================
+let running = false, packs, elapsed, distKm, lastTick, timer, countdown, level, lastLevel;
+function show(id){ for (const s of ["setup","game","result"]) { $(s).hidden = s !== id; $(s).style.display = s === id ? "flex" : "none"; } }
+function renderLanes(){
+  $("lanes").innerHTML = packs.map(p => `
+    <div class="lane" id="lane-${p.id}">
+      <div class="top"><div class="nm">${p.name} ${p.count}頭<span class="rd">${p.road}</span></div><div class="d" id="d-${p.id}"></div></div>
+      <div class="bar"><div class="pk" id="pk-${p.id}">${p.em.repeat(Math.min(3, Math.ceil(p.count/3)))}</div><div class="me">🏃</div></div>
+    </div>`).join("");
+}
+
+$("startBtn").onclick = async () => {
+  try { initAudio(); await ac.resume(); } catch(_) {}
+  if ("speechSynthesis" in window) { const u = new SpeechSynthesisUtterance(""); speechSynthesis.speak(u); } // iPhoneで読み上げを有効にする
+  await startMotion(); startGPS(); keepAwake();
+  $("simBox").hidden = !$("simMode").checked;
+  packs = PACKS.map(p => ({ ...p, gap:p.start, lastSaid:p.start, nextCall:0 }));
+  elapsed = 0; distKm = 0; level = 0; lastLevel = 0; bgmLevel = 0;
+  renderLanes(); show("game"); document.body.className = "";
+  countdown = 6; running = true; lastTick = Date.now();
+  if (ac) startBGM();
+  say(`カバ、チンパンジー、犬の群れが、3つの方向から追ってきます。5秒後にスタートです。`);
+  timer = setInterval(tick, 250);
+};
+$("simRange").oninput = () => $("simVal").textContent = $("simRange").value;
+
+function tick(){
+  const now = Date.now(), dt = (now - lastTick)/1000; lastTick = now;
+  const sp = currentSpeed();
+  $("speedNum").textContent = sp.kmh.toFixed(1);
+  $("pace").textContent = pace(sp.kmh);
+  $("srcLabel").textContent = sp.src;
+
+  if (countdown > 0) {
+    countdown -= dt;
+    $("status").textContent = countdown > 0 ? `${Math.ceil(countdown)}秒後に群れが走り出す` : "スタート！";
+    draw(); if (countdown <= 0) nextTalkAt = now + 20000;
+    return;
+  }
+
+  elapsed += dt;
+  distKm += sp.kmh * dt / 3600;
+  for (const p of packs) p.gap = Math.min(MAX_GAP, p.gap + (sp.kmh - p.kmh) / 3.6 * dt);
+
+  const nearest = packs.reduce((a,b) => a.gap < b.gap ? a : b);
+  const g = nearest.gap;
+  level = g < LEVEL_AT[2] ? 3 : g < LEVEL_AT[1] ? 2 : g < LEVEL_AT[0] ? 1 : 0;
+  bgmLevel = level;
+  document.body.className = level ? "l" + level : "";
+
+  // 実況: 定期的に。緊張度が上がったらすぐ
+  if (level > lastLevel && now - lastTalk > 2500) { say(commentary(level, nearest, sp.kmh), level >= 2); nextTalkAt = now + TALK_EVERY[level]*1000; }
+  else if (now >= nextTalkAt && !speechSynthesis.speaking) { say(commentary(level, nearest, sp.kmh), false); nextTalkAt = now + TALK_EVERY[level]*1000; }
+  lastLevel = level;
+
+  // 鳴き声
+  if (ac) for (const p of packs) if (p.gap < HEAR && now >= p.nextCall) playPack(p);
+  if (level === 3 && navigator.vibrate && now % 1500 < 260) navigator.vibrate([120,60,120]);
+
+  $("status").textContent = ["", `${nearest.name}の群れが近づいてきた`, `${nearest.name}が迫っている！ペースを上げて！`, `${nearest.name}がすぐ後ろ！走れ！`][level]
+    || (packs.every(p => sp.kmh > p.kmh) ? "全部の群れを引き離している" : `${packs.filter(p => sp.kmh <= p.kmh).map(p=>p.name).join("・")}に詰められている`);
+  $("tLeft").textContent = fmt(Math.max(0, minutes*60 - elapsed));
+  $("dist").textContent = distKm.toFixed(2);
+  draw();
+
+  const caught = packs.find(p => p.gap <= 0);
+  if (caught) end(caught);
+  else if (elapsed >= minutes*60) end(null);
+}
+function draw(){
+  const nearest = packs.reduce((a,b) => a.gap < b.gap ? a : b);
+  $("nearWho").textContent = `いちばん近い：${nearest.name}の群れ（${nearest.road}）`;
+  $("gapNum").innerHTML = Math.max(0, Math.round(nearest.gap)) + "<small>m</small>";
+  for (const p of packs) {
+    $("d-" + p.id).textContent = Math.max(0, Math.round(p.gap)) + "m";
+    const x = 86 - (Math.min(BAR_SCALE, Math.max(0, p.gap)) / BAR_SCALE) * 76;
+    $("pk-" + p.id).style.left = x + "%";
+    const st = stageOf(p.gap);
+    $("lane-" + p.id).className = "lane" + (st >= 2 ? " danger" : st === 1 ? " warn" : "");
+  }
+}
+
+function stopAll(){
+  running = false; clearInterval(timer);
+  if (watchId != null) navigator.geolocation.clearWatch(watchId); watchId = null;
+  window.removeEventListener("devicemotion", onMotion);
+  try { wakeLock && wakeLock.release(); } catch(_) {} wakeLock = null;
+  gps = { kmh:0, t:0, acc:999, last:null }; steps = [];
+  if (ac) stopBGM();
+  document.body.className = "";
+}
+function end(caughtBy){
+  stopAll();
+  if (caughtBy === "quit") {
+    say("お疲れさまでした。", true);
+    $("resTitle").textContent = "途中でやめました";
+  } else if (caughtBy) {
+    if (ac) { caughtBy.gap = 5; for (let k=0;k<3;k++) CALLS[caughtBy.id](ac.currentTime + k*0.3, 0.9, caughtBy.pan, 3, rnd(0.9,1.1)); }
+    if (navigator.vibrate) navigator.vibrate(600);
+    say(`${caughtBy.name}の群れにつかまりました。${fmt(elapsed).replace(":", "分")}秒、逃げました。`, true);
+  } else {
+    say(`おめでとうございます！${minutes}分間、すべての群れから逃げ切りました！`, true);
+  }
+  if (caughtBy !== "quit") $("resTitle").textContent = caughtBy ? `${caughtBy.name}の群れにつかまった…` : `全部の群れから逃げ切った！`;
+  $("rTime").textContent = fmt(elapsed);
+  $("rDist").textContent = distKm.toFixed(2);
+  $("rPace").textContent = elapsed > 0 ? pace(distKm / (elapsed/3600)) : "--:--";
+  show("result");
+}
+$("stopBtn").onclick = () => end("quit");
+$("againBtn").onclick = () => { if ("speechSynthesis" in window) speechSynthesis.cancel(); show("setup"); };
+</script>
+</body>
+</html>
